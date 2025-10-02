@@ -1,50 +1,65 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
-</head>
-<body>
-    {% with messages = get_flashed_messages() %}
-    {% if messages %}
-    {% for message in mesaages %}
-    <p>{{ message }}</p>
-    {% endfor %}
-    {% endif %}
-    {% endwith %}
+{% extends 'layout.html' %} 
 
-    <form action="/add_contact" method="post">
-        <input type="text" name="fullname" placeholder="Fullname">
-        <input type="text" name="phone" placeholder="Phone">
-        <input type="text" name="email" placeholder="Email">
-        <button type="submit">
-            Save
-        </button>
-    </form>
-    <table>
-        <thead>
-            <tr>
-                <td> Fullname </td>
-                <td> Phone </td>
-                <td> Email </td>
-                <td> Operations </td>
-                
-            </tr>
-        </thead>
-    <tbody>
-        {% for contact in contacts %}
-        <tr>
-            <td>{{ contact.1 }}</td>
-            <td>{{ contact.2 }}</td>
-            <td>{{ contact.3 }}</td>
-            <td>
-                <a href="/edit/{{ contact.0 }}">Edit</a>
-                <a href="/delete/{{ contact.0 }}">Delete</a>
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-    </table>
+{% block body %}
+
+        <!-- Flash messages -->
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+        <div class="bg-green-100 text-green-800 p-4 rounded-lg mb-6">
+            {% for message in messages %}
+            <p>{{ message }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        <!-- Form -->
+        <form action="/add_contact" method="post" 
+            class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <input type="text" name="fullname" placeholder="Fullname" required
+                class="border rounded-lg p-3 focus:ring-2 focus:ring-blue-400 outline-none">
+            <input type="text" name="phone" placeholder="Phone" required
+                class="border rounded-lg p-3 focus:ring-2 focus:ring-blue-400 outline-none">
+            <input type="email" name="email" placeholder="Email" required
+                class="border rounded-lg p-3 focus:ring-2 focus:ring-blue-400 outline-none">
+            <button type="submit" 
+                class="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg p-3 transition">
+                Save
+            </button>
+        </form>
+
+        <!-- Table -->
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse rounded-lg overflow-hidden">
+                <thead class="bg-blue-200 text-white">
+                    <tr>
+                        <th class="p-3 text-left">Fullname</th>
+                        <th class="p-3 text-left">Phone</th>
+                        <th class="p-3 text-left">Email</th>
+                        <th class="p-3 text-left">Operations</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for contact in contacts %}
+                    <tr class="border-b hover:bg-gray-50">
+                        <td class="p-3">{{ contact[1] }}</td>
+                        <td class="p-3">{{ contact[2] }}</td>
+                        <td class="p-3">{{ contact[3] }}</td>
+                        <td class="p-3 space-x-2">
+                            <a href="/edit/{{ contact[0] }}" 
+                            class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-lg text-sm transition">
+                            Edit
+                            </a>
+                            <a href="/delete/{{ contact[0] }}" 
+                            class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-lg text-sm transition">
+                            Delete
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </body>
-</html>
+{% endblock %}
