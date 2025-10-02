@@ -37,6 +37,41 @@ def add():
     conn.commit()
     return redirect(url_for('index'))
 
+@app.route('/edit/<id>')
+def get_contact (id):
+    conn = get_db_connection()
+    cur=conn.cursor()
+    cur.execute(' SELECT * FROM contacts WHERE id = ?', (id))
+    data = cur.fetchall()
+    return render_template('edit-contact.html', contact = data[0])
+
+@app.route('/update/<int:id>', methods=['POST'])
+def update_contact(id):
+    if request.method == 'POST':
+        fullname = request.form ['fullname']
+        phone = request.form ['phone']
+        email = request.form ['email']
+        
+        conn = get_db_connection()
+        cur=conn.cursor()
+        cur.execute(""" 
+                    UPDATE contacts
+                    SET fullname = ?, phone = ?, email =?
+                    WHERE id = ?
+                    """, (fullname, phone, email, id))
+        conn.commit()
+        flash ('Contact Updated Successfully')
+        return redirect(url_for('index'))
+        
+@app.route('/delete/<string:id>' )
+def delete(id):
+    conn = get_db_connection()
+    cur= conn.cursor()
+    cur.execute('DELETE FROM contacts WHERE id = ?', (id,))
+    conn.commit()
+    conn.close
+    flash ('Contact Removed Succesfull')
+    return redirect(url_for('index'))
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
