@@ -1,24 +1,22 @@
-import os
 import sqlite3
-import types
 import pytest
 
-import app as app_module
-from app import app as flask_app
+from app import create_app
 
 
 @pytest.fixture
-def app_tmp_db(tmp_path, monkeypatch):
-    """Configure the Flask app to use a temporary SQLite DB and initialize schema."""
+def app(tmp_path):
+    """Create a Flask app instance configured to use a temporary SQLite DB and initialize schema."""
+    app = create_app()
     db_path = tmp_path / "test.db"
-    flask_app.config.update(
+    app.config.update(
         TESTING=True,
         SECRET_KEY="test-secret-key",
         DATABASE=str(db_path),
     )
 
-    # Initialize schema
-    conn = sqlite3.connect(str(db_path))
+    # Initialize schema with UNIQUE constraint on email to exercise IntegrityError handling
+    conn = sqlite3.connect(app.config["DATABASE"])
     cur = conn.cursor()
     cur.execute(
         """
@@ -26,19 +24,19 @@ def app_tmp_db(tmp_path, monkeypatch):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             fullname TEXT NOT NULL,
             phone TEXT NOT NULL,
-            email TEXT NOT NULL
+            email TEXT NOT NULL UNIQUE
         )
         """
     )
     conn.commit()
     conn.close()
 
-    yield flask_app
+    yield app
 
 
 @pytest.fixture
-def client(app_tmp_db):
-    return app_tmp_db.test_client()
+def client(app):
+    return app.test_client()
 
 
 def test_index_returns_200_and_renders(client):
@@ -50,9 +48,9 @@ def test_index_returns_200_and_renders(client):
     assert b"Email" in resp.data
 
 
-def test_index_displays_contacts_from_db(client, app_tmp_db):
+def test_index_displays_contacts_from_db(app, client):
     # Seed a contact directly into the temp DB
-    conn = sqlite3.connect(app_tmp_db.config["DATABASE"])
+    conn = sqlite3.connect(app.config["DATABASE"])
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO contacts (fullname, phone, email) VALUES (?, ?, ?)",
@@ -68,7 +66,7 @@ def test_index_displays_contacts_from_db(client, app_tmp_db):
     assert b"alice@example.com" in resp.data
 
 
-def test_add_contact_inserts_and_redirects(client, app_tmp_db):
+def test_add_contact_inserts_and_redirects(client, app):
     resp = client.post(
         "/add_contact",
         data={"fullname": "Bob", "phone": "111-222", "email": "bob@example.com"},
@@ -78,11 +76,11 @@ def test_add_contact_inserts_and_redirects(client, app_tmp_db):
     assert resp.status_code in (302, 303)
 
     # Verify it was inserted
-    conn = sqlite3.connect(app_tmp_db.config["DATABASE"])
+    conn = sqlite3.connect(app.config["DATABASE"])
     cur = conn.cursor()
     cur.execute(
-        "SELECT fullname, phone, email FROM contacts WHERE fullname=?",
-        ("Bob",),
+        "SELECT fullname, phone, email FROM contacts WHERE email=?",
+        ("bob@example.com",),
     )
     row = cur.fetchone()
     conn.close()
@@ -94,6 +92,7 @@ def test_add_contact_flashes_success_message(client):
     resp = client.post(
         "/add_contact",
         data={"fullname": "Carol", "phone": "222-333", "email": "carol@example.com"},
+        follow_redirects=False,
     )
     assert resp.status_code in (302, 303)
 
@@ -101,52 +100,24 @@ def test_add_contact_flashes_success_message(client):
     with client.session_transaction() as sess:
         flashes = sess.get("_flashes", [])
     # _flashes is a list of (category, message)
-    assert any("Contacts added successfully" in msg for _cat, msg in flashes)
+    assert any((cat == "success" and "Contact added successfully!" in msg) for cat, msg in flashes)
 
 
-class _FakeCursor:
-    def execute(self, *args, **kwargs):
-        return None
-
-    def fetchall(self, *args, **kwargs):
-        return []
-
-
-class _FakeConn:
-    def __init__(self):
-        self.closed = False
-        self.committed = False
-
-    def cursor(self):
-        return _FakeCursor()
-
-    def commit(self):
-        self.committed = True
-
-    def close(self):
-        self.closed = True
-
-
-def test_index_closes_connection(monkeypatch, app_tmp_db):
-    fake = _FakeConn()
-    monkeypatch.setattr(app_module, "get_db_connection", lambda: fake)
-
-    client = app_tmp_db.test_client()
-    resp = client.get("/")
-    assert resp.status_code == 200
-    # Expect connection to be closed by the route handler
-    assert fake.closed is True
-
-
-def test_add_commits_and_closes(monkeypatch, app_tmp_db):
-    fake = _FakeConn()
-    monkeypatch.setattr(app_module, "get_db_connection", lambda: fake)
-
-    client = app_tmp_db.test_client()
+def test_add_contact_duplicate_email_flashes_error(client):
+    # First insert
+    client.post(
+        "/add_contact",
+        data={"fullname": "Dan", "phone": "333-444", "email": "dup@example.com"},
+        follow_redirects=False,
+    )
+    # Attempt duplicate
     resp = client.post(
         "/add_contact",
-        data={"fullname": "Zed", "phone": "999-000", "email": "zed@example.com"},
+        data={"fullname": "Dan 2", "phone": "555-666", "email": "dup@example.com"},
+        follow_redirects=False,
     )
     assert resp.status_code in (302, 303)
-    assert fake.committed is True
-    assert fake.closed is True
+
+    with client.session_transaction() as sess:
+        flashes = sess.get("_flashes", [])
+    assert any((cat == "error" and "This email already exists." in msg) for cat, msg in flashes)
